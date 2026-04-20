@@ -1,0 +1,11 @@
+node_modules/
+.DS_Store
+*.log
+dist/
+build/
+target/
+.env
+.env.local
+*.pem
+*.key
+.claude/
