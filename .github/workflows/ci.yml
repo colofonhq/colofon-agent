@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: smoke-test against real SLSA fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout agent
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4 @ 2025-11-13
+
+      # Invoke the action against the real cli/cli attestation fixture
+      # that ships with colofon-sdk/test/fixtures. If this step passes,
+      # the full pipeline - attestation parse -> witness -> circuit
+      # compile -> UltraHonk prove -> bundle serialise - works end-to-
+      # end the same way a downstream release workflow would call it.
+      - name: Stage fixture
+        run: |
+          mkdir -p .colofon-smoke
+          git clone --depth=1 --filter=blob:none --sparse https://${{ secrets.COLOFON_AGENT_TOKEN }}@github.com/colofonhq/colofon-sdk.git .colofon-smoke/sdk
+          (cd .colofon-smoke/sdk && git sparse-checkout set test/fixtures/slsa-provenance-bundle-sha256.json)
+          cp .colofon-smoke/sdk/test/fixtures/slsa-provenance-bundle-sha256.json attestation.json
+
+          # Approved-builders file: the real cli/cli signer identity
+          # plus one other, to give the Merkle tree actual depth.
+          cat > builders.txt <<'EOF'
+          https://github.com/cli/cli/.github/workflows/deployment.yml@refs/heads/trunk
+          https://github.com/acme/placeholder/.github/workflows/release.yml@refs/heads/main
+          EOF
+
+      - name: Run colofon-agent
+        uses: ./
+        with:
+          attestation-bundle: attestation.json
+          approved-builders-file: builders.txt
+          output-path: colofon-bundle.json
+          sdk-token: ${{ secrets.COLOFON_AGENT_TOKEN }}
+
+      - name: Sanity-check the generated bundle
+        run: |
+          test -s colofon-bundle.json
+          node -e '
+            const fs = require("fs");
+            const b = JSON.parse(fs.readFileSync("colofon-bundle.json", "utf-8"));
+            if (b.version !== "1") { console.error("bad version"); process.exit(1); }
+            if (b.circuit.name !== "colofon_build_provenance") { console.error("bad circuit name"); process.exit(1); }
+            if (!Array.isArray(b.publicInputs) || b.publicInputs.length !== 5) {
+              console.error("expected 5 public inputs, got", b.publicInputs?.length);
+              process.exit(1);
+            }
+            if (typeof b.proof !== "string" || b.proof.length === 0) { console.error("missing proof"); process.exit(1); }
+            if (b.metadata.binaryDigestSha256 !== "33502d742261d4af607e48d2420d4fa2a208de9349a327db7fb3b9b4fbe536d0") {
+              console.error("unexpected binary digest");
+              process.exit(1);
+            }
+            console.log("bundle sanity check ok");
+          '
+
+      - name: Upload bundle as artefact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 @ 2024-10-10
+        with:
+          name: colofon-bundle
+          path: colofon-bundle.json

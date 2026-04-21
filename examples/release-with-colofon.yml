@@ -1,0 +1,57 @@
+# Example: attest + wrap in a Colofon bundle on every tag push.
+#
+# Copy into `.github/workflows/release.yml` in a consumer repo,
+# adjust the `subject-path` to point at the artefact you release,
+# and commit an approved-builders file (see `.colofon/builders.txt`
+# below).
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # create releases + upload assets
+  id-token: write   # fulcio / SLSA attestation
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build release artefact
+        run: |
+          # Replace with the actual build for your project.
+          echo "hello colofon" > my-artefact.tar.gz
+
+      - name: Generate SLSA attestation
+        id: attest
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: my-artefact.tar.gz
+
+      - name: Generate Colofon proof bundle
+        id: colofon
+        uses: colofonhq/colofon-agent@v0
+        with:
+          attestation-bundle: ${{ steps.attest.outputs.bundle-path }}
+          approved-builders-file: .colofon/builders.txt
+          output-path: colofon-bundle.json
+          # Required while colofon-sdk and colofon-circuits are
+          # private. Drop once the SDK is published to npm and
+          # circuits go public.
+          sdk-token: ${{ secrets.COLOFON_AGENT_TOKEN }}
+
+      - name: Create release with both artefacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            my-artefact.tar.gz \
+            "${{ steps.attest.outputs.bundle-path }}" \
+            "${{ steps.colofon.outputs.bundle-path }}" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes
