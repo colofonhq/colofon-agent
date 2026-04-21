@@ -1,0 +1,115 @@
+name: 'Colofon Agent'
+description: >-
+  Generate a Colofon proof bundle from a Sigstore/SLSA attestation, proving
+  the release was signed by an approved-builder identity without exposing
+  internal build metadata.
+author: 'Colofon'
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  attestation-bundle:
+    description: >-
+      Path (relative to workspace) to a Sigstore bundle JSON carrying a SLSA
+      v1 DSSE attestation. Typically the file written by
+      `actions/attest-build-provenance` or `gh attestation download`.
+    required: true
+  approved-builders-file:
+    description: >-
+      Path (relative to workspace) to a newline-delimited UTF-8 file listing
+      the canonical Fulcio SAN URIs of approved builders. The first line must
+      be the identity that signed this release; additional lines form the
+      approved-builder Merkle set.
+    required: true
+  output-path:
+    description: 'Where to write the Colofon proof bundle.'
+    required: false
+    default: 'colofon-bundle.json'
+  sdk-ref:
+    description: >-
+      Git ref of colofon-sdk to check out. Defaults to `main`; override to
+      pin a consumer's workflow to a specific SDK version.
+    required: false
+    default: 'main'
+  circuits-ref:
+    description: >-
+      Git ref of colofon-circuits to check out. Defaults to `main`.
+    required: false
+    default: 'main'
+  sdk-token:
+    description: >-
+      Token with read access to colofonhq/colofon-sdk and
+      colofonhq/colofon-circuits. Required while those repos are private;
+      pass a fine-grained PAT via secrets. Once the SDK is published to npm
+      and the circuits are public, this input will become optional.
+    required: true
+
+outputs:
+  bundle-path:
+    description: 'Path to the generated Colofon proof bundle.'
+    value: ${{ inputs.output-path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node 20
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 @ 2025-04-02
+      with:
+        node-version: '20'
+
+    - name: Checkout colofon-sdk
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4 @ 2025-11-13
+      with:
+        repository: colofonhq/colofon-sdk
+        ref: ${{ inputs.sdk-ref }}
+        token: ${{ inputs.sdk-token }}
+        path: .colofon/sdk
+
+    - name: Checkout colofon-circuits
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4 @ 2025-11-13
+      with:
+        repository: colofonhq/colofon-circuits
+        ref: ${{ inputs.circuits-ref }}
+        token: ${{ inputs.sdk-token }}
+        path: .colofon/circuits
+
+    - name: Install Noir toolchain (nargo 1.0.0-beta.18)
+      # Official noir-lang/noirup action, pinned to v0.1.4 (SHA
+      # 7dbe69c, 2024). Replaces the unpinned `curl | bash` installer
+      # so noirup itself is checksum-stable across action runs.
+      uses: noir-lang/noirup@7dbe69ccc78877f0200ffa5a40836c953d2cfd8f # v0.1.4
+      with:
+        toolchain: 1.0.0-beta.18
+
+    - name: Install SDK dependencies
+      shell: bash
+      working-directory: .colofon/sdk
+      run: npm ci
+
+    - name: Compile colofon_build_provenance
+      shell: bash
+      working-directory: .colofon/circuits
+      run: nargo compile --package colofon_build_provenance
+
+    - name: Stage agent entry script inside the SDK checkout
+      shell: bash
+      # The script uses `./src/...` module specifiers so it can resolve
+      # SDK sources via relative paths. Copying it into the SDK root
+      # also means `tsx` picks up the SDK's node_modules without any
+      # extra flags.
+      run: cp "$GITHUB_ACTION_PATH/scripts/generate-bundle.mjs" "${{ github.workspace }}/.colofon/sdk/colofon-agent-entry.mjs"
+
+    - name: Generate Colofon bundle
+      shell: bash
+      working-directory: ${{ github.workspace }}/.colofon/sdk
+      env:
+        # GITHUB_WORKSPACE is injected by the runner, but declaring it
+        # here makes the script's required() dependency explicit in
+        # one place.
+        GITHUB_WORKSPACE: ${{ github.workspace }}
+        COLOFON_CIRCUITS_DIR: ${{ github.workspace }}/.colofon/circuits
+        COLOFON_ATTESTATION: ${{ inputs.attestation-bundle }}
+        COLOFON_APPROVED_BUILDERS: ${{ inputs.approved-builders-file }}
+        COLOFON_OUTPUT: ${{ inputs.output-path }}
+      run: npx tsx ./colofon-agent-entry.mjs

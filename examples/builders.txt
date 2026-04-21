@@ -1,0 +1,11 @@
+# Approved-builders list for Colofon.
+#
+# One Fulcio SAN URI per line. The first line MUST be the identity
+# that signed this release; additional lines form the approved-builder
+# Merkle set that the proof attests against.
+#
+# Lines starting with '#' and blank lines are ignored.
+#
+# Example entries (replace with your own):
+https://github.com/your-org/your-repo/.github/workflows/release.yml@refs/heads/main
+https://github.com/your-org/your-other-repo/.github/workflows/release.yml@refs/heads/main
