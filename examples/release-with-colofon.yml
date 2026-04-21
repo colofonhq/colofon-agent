@@ -40,7 +40,12 @@ jobs:
 
       - name: Generate Colofon proof bundle
         id: colofon
-        uses: colofonhq/colofon-agent@v0
+        # Pinned to an immutable commit SHA for reproducibility and
+        # supply-chain safety - a compromised agent-repo tag can't
+        # silently alter what runs here. Bump the SHA deliberately
+        # when upgrading; the trailing comment tracks the upstream
+        # `main`-branch date at pin time.
+        uses: colofonhq/colofon-agent@3cd052c20bbc055373c16cf8b95d9af10eae3767 # main @ 2026-04-21
         with:
           attestation-bundle: ${{ steps.attest.outputs.bundle-path }}
           approved-builders-file: .colofon/builders.txt
