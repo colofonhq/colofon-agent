@@ -32,8 +32,12 @@ jobs:
       - name: Stage fixture
         run: |
           mkdir -p .colofon-smoke
-          git clone --depth=1 --filter=blob:none --sparse https://${{ secrets.COLOFON_AGENT_TOKEN }}@github.com/colofonhq/colofon-sdk.git .colofon-smoke/sdk
-          (cd .colofon-smoke/sdk && git sparse-checkout set test/fixtures/slsa-provenance-bundle-sha256.json)
+          git clone --depth=1 --filter=blob:none --sparse "https://${{ secrets.COLOFON_AGENT_TOKEN }}@github.com/colofonhq/colofon-sdk.git" .colofon-smoke/sdk
+          # Sparse-checkout uses cone-mode by default, which expects
+          # directory patterns, not individual files. Pulling in
+          # `test/fixtures` grabs the SLSA bundle we need plus a few
+          # dozen other small files (negligible).
+          (cd .colofon-smoke/sdk && git sparse-checkout set test/fixtures)
           cp .colofon-smoke/sdk/test/fixtures/slsa-provenance-bundle-sha256.json attestation.json
 
           # Approved-builders file: the real cli/cli signer identity
