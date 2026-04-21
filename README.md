@@ -1,8 +1,6 @@
 # colofon-agent
 
-CI plugin for Colofon — drops into a vendor's release pipeline, generates the proof bundle on every release.
-
-**Private repo. Early-stage. See [`colofon-docs`](https://github.com/colofonhq/colofon-docs) for the project plan.**
+GitHub Action that wraps a Sigstore/SLSA build-provenance attestation into a Colofon proof bundle on every release.
 
 ## What it does
 
@@ -12,7 +10,7 @@ Wraps an existing Sigstore/SLSA build-provenance attestation into a Colofon proo
 - The binary digest in the bundle matches the `subject.digest.sha256` of the signed attestation.
 - The builder identity is a member of the approved-builder Merkle set.
 
-Anyone can verify the bundle client-side via [`colofon-verifier`](https://github.com/colofonhq/colofon-verifier) without seeing the internal build log or the full attestation payload.
+Anyone can verify the bundle client-side at **[colofon-verifier.vercel.app/verify](https://colofon-verifier.vercel.app/verify)** without seeing the internal build log or the full attestation payload.
 
 ## Usage
 
@@ -22,7 +20,9 @@ Anyone can verify the bundle client-side via [`colofon-verifier`](https://github
   with:
     subject-path: dist/my-artefact.tar.gz
 
-- uses: colofonhq/colofon-agent@v0
+# Production workflows should pin `@main` to a commit SHA for
+# reproducibility (this example is deliberately short for readability).
+- uses: colofonhq/colofon-agent@main
   id: colofon
   with:
     attestation-bundle: ${{ steps.attest.outputs.bundle-path }}
@@ -41,7 +41,7 @@ See [`examples/release-with-colofon.yml`](examples/release-with-colofon.yml) for
 | `output-path` | | `colofon-bundle.json` | Where to write the proof bundle. |
 | `sdk-ref` | | `main` | Git ref of `colofon-sdk` to pin against. |
 | `circuits-ref` | | `main` | Git ref of `colofon-circuits` to pin against. |
-| `sdk-token` | ✓ | — | Token with read access to `colofon-sdk` and `colofon-circuits`. Drops to optional once both are public / SDK is on npm. |
+| `sdk-token` | ✓ | — | Personal access token with read access to `colofon-sdk` and `colofon-circuits`. Will become optional once `@colofon/sdk` ships on npm and the compiled ACIR is distributed as an action asset. |
 
 ### Outputs
 
@@ -51,10 +51,12 @@ See [`examples/release-with-colofon.yml`](examples/release-with-colofon.yml) for
 
 ## Status
 
-v0 — works end-to-end against the private `colofon-sdk` / `colofon-circuits` checkouts via `sdk-token`. Upgrading to v1 requires:
+v0. Works end-to-end — see [`colofon-examples`](https://github.com/colofonhq/colofon-examples) for a full release workflow that uses this action.
+
+v1 roadmap:
 
 - Publish `@colofon/sdk` to npm so consumers don't need a cross-repo PAT.
-- Make `colofon-circuits` public OR ship the compiled ACIR bytecode as an action asset.
+- Ship the compiled ACIR bytecode as an action asset so consumers don't need to compile.
 
 ## v1.5+
 
