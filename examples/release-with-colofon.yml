@@ -40,7 +40,11 @@ jobs:
 
       - name: Generate Colofon proof bundle
         id: colofon
-        uses: colofonhq/colofon-agent@v0
+        # Production workflows should pin to an immutable commit SHA
+        # (see how colofon-examples does it). Using @main here for
+        # example readability; swap for `@<40-char sha>` when you
+        # copy this into your own repo.
+        uses: colofonhq/colofon-agent@3cd052c20bbc055373c16cf8b95d9af10eae3767 # main @ 2026-04-21
         with:
           attestation-bundle: ${{ steps.attest.outputs.bundle-path }}
           approved-builders-file: .colofon/builders.txt
