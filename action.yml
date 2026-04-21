@@ -74,16 +74,13 @@ runs:
         token: ${{ inputs.sdk-token }}
         path: .colofon/circuits
 
-    - name: Install nargo
-      shell: bash
-      run: |
-        curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash
-        echo "$HOME/.nargo/bin" >> "$GITHUB_PATH"
-
-    - name: Install nargo 1.0.0-beta.18
-      shell: bash
-      run: |
-        "$HOME/.nargo/bin/noirup" --version 1.0.0-beta.18
+    - name: Install Noir toolchain (nargo 1.0.0-beta.18)
+      # Official noir-lang/noirup action, pinned to v0.1.4 (SHA
+      # 7dbe69c, 2024). Replaces the unpinned `curl | bash` installer
+      # so noirup itself is checksum-stable across action runs.
+      uses: noir-lang/noirup@7dbe69ccc78877f0200ffa5a40836c953d2cfd8f # v0.1.4
+      with:
+        toolchain: 1.0.0-beta.18
 
     - name: Install SDK dependencies
       shell: bash
@@ -107,6 +104,10 @@ runs:
       shell: bash
       working-directory: ${{ github.workspace }}/.colofon/sdk
       env:
+        # GITHUB_WORKSPACE is injected by the runner, but declaring it
+        # here makes the script's required() dependency explicit in
+        # one place.
+        GITHUB_WORKSPACE: ${{ github.workspace }}
         COLOFON_CIRCUITS_DIR: ${{ github.workspace }}/.colofon/circuits
         COLOFON_ATTESTATION: ${{ inputs.attestation-bundle }}
         COLOFON_APPROVED_BUILDERS: ${{ inputs.approved-builders-file }}

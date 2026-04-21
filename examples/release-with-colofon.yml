@@ -20,6 +20,11 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      # Example uses floating `@v4` tags for readability. Production
+      # workflows should pin third-party actions to immutable commit
+      # SHAs (e.g. `actions/checkout@34e1148...`) so a compromised
+      # action release cannot silently run in your pipeline. The
+      # `colofon-agent` action itself pins its internal dependencies.
       - uses: actions/checkout@v4
 
       - name: Build release artefact

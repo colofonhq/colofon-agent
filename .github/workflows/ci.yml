@@ -29,23 +29,33 @@ jobs:
       # the full pipeline - attestation parse -> witness -> circuit
       # compile -> UltraHonk prove -> bundle serialise - works end-to-
       # end the same way a downstream release workflow would call it.
-      - name: Stage fixture
+      # Use actions/checkout with sparse-checkout to fetch just the
+      # SLSA fixture from colofon-sdk. Passing the token via the
+      # action keeps it out of process args / shell history - it
+      # lives only in the checkout's credential helper for the
+      # duration of the step.
+      - name: Fetch SLSA fixture from colofon-sdk
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4 @ 2025-11-13
+        with:
+          repository: colofonhq/colofon-sdk
+          token: ${{ secrets.COLOFON_AGENT_TOKEN }}
+          path: .colofon-smoke/sdk
+          sparse-checkout: |
+            test/fixtures
+          sparse-checkout-cone-mode: true
+
+      - name: Stage attestation + builders
         run: |
-          mkdir -p .colofon-smoke
-          git clone --depth=1 --filter=blob:none --sparse "https://${{ secrets.COLOFON_AGENT_TOKEN }}@github.com/colofonhq/colofon-sdk.git" .colofon-smoke/sdk
-          # Sparse-checkout uses cone-mode by default, which expects
-          # directory patterns, not individual files. Pulling in
-          # `test/fixtures` grabs the SLSA bundle we need plus a few
-          # dozen other small files (negligible).
-          (cd .colofon-smoke/sdk && git sparse-checkout set test/fixtures)
           cp .colofon-smoke/sdk/test/fixtures/slsa-provenance-bundle-sha256.json attestation.json
 
           # Approved-builders file: the real cli/cli signer identity
-          # plus one other, to give the Merkle tree actual depth.
-          cat > builders.txt <<'EOF'
-          https://github.com/cli/cli/.github/workflows/deployment.yml@refs/heads/trunk
-          https://github.com/acme/placeholder/.github/workflows/release.yml@refs/heads/main
-          EOF
+          # plus one other to give the Merkle tree real depth.
+          # Building via `{ echo; echo; } > file` avoids indented
+          # heredoc bodies leaking leading whitespace into the file.
+          {
+            echo 'https://github.com/cli/cli/.github/workflows/deployment.yml@refs/heads/trunk'
+            echo 'https://github.com/acme/placeholder/.github/workflows/release.yml@refs/heads/main'
+          } > builders.txt
 
       - name: Run colofon-agent
         uses: ./

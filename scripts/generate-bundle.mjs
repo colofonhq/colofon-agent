@@ -88,8 +88,12 @@ async function main() {
 
   const approvedBuilders = readApprovedBuilders(approvedBuildersPath);
   if (!approvedBuilders.includes(parsed.signerIdentityUri)) {
+    // Surface enough context for a consumer to spot
+    // formatting mismatches (trailing slashes, wrong workflow
+    // path, `refs/heads/main` vs. `refs/tags/*`, etc.) without
+    // forcing them to cross-reference the bundle by hand.
     throw new Error(
-      `Signer identity ${parsed.signerIdentityUri} is not in the approved-builders file (${approvedBuildersPath}). Refusing to generate a bundle for an unapproved builder.`,
+      `Signer identity ${parsed.signerIdentityUri} is not in the approved-builders file ${approvedBuildersPath} (${approvedBuilders.length} entries: ${approvedBuilders.map((b) => `"${b}"`).join(', ')}). Refusing to generate a bundle for an unapproved builder.`,
     );
   }
 
@@ -129,6 +133,8 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('Colofon agent failed:', err instanceof Error ? err.message : err);
+  // Log the full error (stack if available); losing the stack in CI
+  // makes debugging proof-generation failures noticeably harder.
+  console.error('Colofon agent failed:', err);
   process.exit(1);
 });
