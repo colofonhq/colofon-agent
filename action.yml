@@ -74,13 +74,19 @@ runs:
         token: ${{ inputs.sdk-token }}
         path: .colofon/circuits
 
-    - name: Install Noir toolchain (nargo 1.0.0-beta.18)
+    - name: Install Noir toolchain (nargo 1.0.0-beta.19)
       # Official noir-lang/noirup action, pinned to v0.1.4 (SHA
       # 7dbe69c, 2024). Replaces the unpinned `curl | bash` installer
       # so noirup itself is checksum-stable across action runs.
+      #
+      # Pinned in lockstep with colofon-sdk's @noir-lang/noir_js and
+      # @aztec/bb.js — drift between nargo (which compiles ACIR) and
+      # noir_js (which executes ACIR) shows up as a cryptic "Failed
+      # to deserialize circuit" at noir.execute(...). Bumping here
+      # means upgrading sdk + circuits + prover in the same release.
       uses: noir-lang/noirup@7dbe69ccc78877f0200ffa5a40836c953d2cfd8f # v0.1.4
       with:
-        toolchain: 1.0.0-beta.18
+        toolchain: 1.0.0-beta.19
 
     - name: Install SDK dependencies
       shell: bash
