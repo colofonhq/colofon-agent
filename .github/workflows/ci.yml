@@ -76,7 +76,7 @@ jobs:
           node -e '
             const fs = require("fs");
             const b = JSON.parse(fs.readFileSync("colofon-bundle.json", "utf-8"));
-            if (b.version !== 2) { console.error("bad version, expected 2 got", b.version); process.exit(1); }
+            if (b.version !== "2") { console.error("bad version, expected \"2\" got", JSON.stringify(b.version)); process.exit(1); }
             if (!Array.isArray(b.circuits) || b.circuits.length !== 1) {
               console.error("expected exactly 1 circuit entry, got", b.circuits?.length);
               process.exit(1);
