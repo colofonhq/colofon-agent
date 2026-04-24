@@ -35,6 +35,7 @@ import {
 } from './src/bundle/encode.js';
 import { parseSlsaBundleFile } from './src/slsa/parse.js';
 import {
+  buildProvenanceNoirInputs,
   loadCompiledCircuit,
   proveBuildProvenance,
 } from './src/slsa/prove.js';
@@ -66,17 +67,74 @@ function readApprovedBuilders(path) {
   return lines;
 }
 
+/**
+ * Generate a Circuit 1 proof by delegating to a remote prover service.
+ *
+ * Mirrors the shape of `proveBuildProvenance(circuit, witness)` from
+ * the SDK — same return contract, so the caller flow is identical.
+ * Accepts the same compiled circuit JSON (for bytecode hashing on the
+ * bundle side) but doesn't run bb.js locally.
+ *
+ * Network security notes (§4 of colofon-prover/PLAN.md):
+ *  - The witness is posted as-is over TLS. Phase 4 of the prover will
+ *    add client-side envelope encryption; until then, TLS-and-trust is
+ *    the interim posture.
+ *  - The prover never persists the witness. We still avoid logging
+ *    the request body on our side for the same reason.
+ */
+async function proveViaRemoteProver(proverUrl, witness) {
+  const inputs = buildProvenanceNoirInputs(witness);
+  const endpoint = `${proverUrl.replace(/\/$/, '')}/v1/proofs`;
+  console.log(`  delegating proving to ${endpoint}`);
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ circuit: 'build_provenance', inputs }),
+  });
+  if (!response.ok) {
+    // Intentionally don't dump the response body into the error — on
+    // 4xx it will quote our own inputs back, which could include
+    // witness content in attacker-controlled scenarios. Surface
+    // status + error code only.
+    let code = 'unknown';
+    try {
+      const maybe = await response.json();
+      code = maybe?.error?.code ?? 'unknown';
+    } catch {
+      /* not JSON, ignore */
+    }
+    throw new Error(
+      `Remote prover ${endpoint} returned HTTP ${response.status} (error code: ${code})`,
+    );
+  }
+  const body = await response.json();
+  if (body.status !== 'ready' || typeof body.proof !== 'string' || !Array.isArray(body.public_inputs)) {
+    throw new Error(
+      `Remote prover returned an unexpected response shape (status=${body.status})`,
+    );
+  }
+  const proof = Buffer.from(body.proof, 'base64');
+  if (body.timings?.proving_ms != null) {
+    console.log(`  remote proving done in ${body.timings.proving_ms} ms`);
+  }
+  return { proof: new Uint8Array(proof), publicInputs: body.public_inputs };
+}
+
 async function main() {
   const workspace = required('GITHUB_WORKSPACE');
   const circuitsDir = required('COLOFON_CIRCUITS_DIR');
   const attestationPath = resolve(workspace, required('COLOFON_ATTESTATION'));
   const approvedBuildersPath = resolve(workspace, required('COLOFON_APPROVED_BUILDERS'));
   const outputPath = resolve(workspace, required('COLOFON_OUTPUT'));
+  // Optional: route proving to a hosted colofon-prover instead of
+  // running bb.js locally. Leave unset for the default local path.
+  const proverUrl = process.env.COLOFON_PROVER_URL;
 
   console.log('Colofon agent: generating build-provenance bundle');
   console.log(`  attestation:       ${attestationPath}`);
   console.log(`  approved-builders: ${approvedBuildersPath}`);
   console.log(`  output:            ${outputPath}`);
+  console.log(`  proving mode:      ${proverUrl ? 'remote' : 'local'}`);
 
   const parsed = parseSlsaBundleFile(attestationPath);
   if (!parsed.signerIdentityUri) {
@@ -110,8 +168,14 @@ async function main() {
   );
   const circuit = loadCompiledCircuit(compiledCircuitPath);
 
-  console.log('  generating UltraHonk proof (~30s)...');
-  const { proof, publicInputs } = await proveBuildProvenance(circuit, witness);
+  let proof;
+  let publicInputs;
+  if (proverUrl) {
+    ({ proof, publicInputs } = await proveViaRemoteProver(proverUrl, witness));
+  } else {
+    console.log('  generating UltraHonk proof locally (~30s)...');
+    ({ proof, publicInputs } = await proveBuildProvenance(circuit, witness));
+  }
 
   const bundle = buildColofonBundle(
     circuit,
