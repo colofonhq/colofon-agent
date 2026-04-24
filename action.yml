@@ -44,6 +44,15 @@ inputs:
       pass a fine-grained PAT via secrets. Once the SDK is published to npm
       and the circuits are public, this input will become optional.
     required: true
+  prover-url:
+    description: >-
+      Optional. If set, UltraHonk proving is delegated to the specified
+      colofon-prover service (e.g. `https://colofon-prover.fly.dev`) instead
+      of running bb.js inside the runner. Use when CI memory / runtime
+      limits make local proving inconvenient. When unset (the default), the
+      witness never leaves your infrastructure.
+    required: false
+    default: ''
 
 outputs:
   bundle-path:
@@ -118,4 +127,5 @@ runs:
         COLOFON_ATTESTATION: ${{ inputs.attestation-bundle }}
         COLOFON_APPROVED_BUILDERS: ${{ inputs.approved-builders-file }}
         COLOFON_OUTPUT: ${{ inputs.output-path }}
+        COLOFON_PROVER_URL: ${{ inputs.prover-url }}
       run: npx tsx ./colofon-agent-entry.mjs
